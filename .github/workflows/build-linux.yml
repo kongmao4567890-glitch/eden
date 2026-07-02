@@ -43,6 +43,7 @@ jobs:
             libvdpau-dev \
             libpipewire-0.3-dev \
             libwayland-dev \
+            libdrm-dev \
             pkg-config \
             qt6-base-dev \
             qt6-base-private-dev \

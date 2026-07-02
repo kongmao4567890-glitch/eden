@@ -25,7 +25,17 @@ jobs:
       - name: Install dependencies
         run: |
           choco install cmake ninja -y
-          $env:PATH = "C:\Program Files\CMake\bin;C:\Program Files\Ninja;$env:PATH"
+          echo "C:\Program Files\CMake\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          echo "C:\Program Files\Ninja" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install glslangValidator
+        run: |
+          $url = "https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-windows-x64-Release.zip"
+          Invoke-WebRequest -Uri $url -OutFile glslang.zip
+          Expand-Archive -Path glslang.zip -DestinationPath C:\glslang -Force
+          $glslangBin = Get-ChildItem -Path C:\glslang -Recurse -Filter "glslangValidator.exe" | Select-Object -First 1 -ExpandProperty DirectoryName
+          echo "Found glslangValidator at: $glslangBin"
+          echo "$glslangBin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Configure CMake
         run: |
@@ -48,11 +58,11 @@ jobs:
 
       - name: Package
         run: |
-          mkdir artifact
-          copy build\bin\eden.exe artifact\ || true
-          copy -r dist\qt_themes artifact\ || true
-          copy -r dist\languages artifact\ || true
-          copy dist\compatibility_list artifact\ || true
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item -Path build\bin\eden.exe -Destination artifact\ -ErrorAction SilentlyContinue
+          Copy-Item -Path dist\qt_themes -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
+          Copy-Item -Path dist\languages -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
+          Copy-Item -Path dist\compatibility_list -Destination artifact\ -ErrorAction SilentlyContinue
           Compress-Archive -Path artifact\* -DestinationPath eden-windows-x64.zip
 
       - uses: actions/upload-artifact@v4
