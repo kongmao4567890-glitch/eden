@@ -24,6 +24,7 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
+            meson \
             glslang-tools \
             libboost-all-dev \
             libssl-dev \
@@ -52,6 +53,15 @@ jobs:
             libgl1-mesa-dev \
             libwayland-dev \
             wayland-protocols
+
+      - name: Build newer libva (for vaMapBuffer2)
+        run: |
+          git clone --depth 1 https://github.com/intel/libva.git /tmp/libva
+          cd /tmp/libva
+          meson setup build --prefix=/usr/local --default-library=both
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
 
       - name: Configure CMake
         run: |
