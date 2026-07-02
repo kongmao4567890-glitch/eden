@@ -1,0 +1,85 @@
+name: Build (Linux)
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            glslang-tools \
+            libboost-context-dev \
+            libssl-dev \
+            libusb-1.0-0-dev \
+            libsndio-dev \
+            libpulse-dev \
+            libgl-dev \
+            libzstd-dev \
+            liblz4-dev \
+            libfmt-dev \
+            libxml2-dev \
+            libavcodec-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libavfilter-dev \
+            libva-dev \
+            libvdpau-dev \
+            libpipewire-0.3-dev \
+            libwayland-dev \
+            pkg-config \
+            qt6-base-dev \
+            qt6-base-private-dev \
+            qt6-multimedia-dev \
+            qt6-tools-dev \
+            qt6-wayland-dev \
+            libgl1-mesa-dev \
+            libwayland-dev \
+            wayland-protocols
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_QT=ON \
+            -DENABLE_QT_TRANSLATION=ON \
+            -DYUZU_USE_BUNDLED_FFMPEG=ON \
+            -DYUZU_USE_BUNDLED_SDL3=ON \
+            -DYUZU_USE_BUNDLED_SIRIT=ON \
+            -DYUZU_TESTS=OFF \
+            -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_UPDATE_CHECKER=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel $(nproc)
+
+      - name: Package
+        run: |
+          mkdir -p artifact
+          cp build/bin/eden artifact/ || true
+          cp -r dist/qt_themes artifact/ || true
+          cp -r dist/languages artifact/ || true
+          cp dist/compatibility_list artifact/ || true
+          cd artifact && tar czf ../eden-linux-x64.tar.gz .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eden-linux-x64
+          path: eden-linux-x64.tar.gz
+          retention-days: 30

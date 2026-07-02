@@ -1,0 +1,62 @@
+name: Build (Windows)
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install dependencies
+        run: |
+          choco install cmake ninja -y
+          $env:PATH = "C:\Program Files\CMake\bin;C:\Program Files\Ninja;$env:PATH"
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DENABLE_QT=ON `
+            -DYUZU_USE_BUNDLED_QT=ON `
+            -DYUZU_USE_BUNDLED_FFMPEG=ON `
+            -DYUZU_USE_BUNDLED_SDL3=ON `
+            -DYUZU_USE_BUNDLED_SIRIT=ON `
+            -DYUZU_USE_BUNDLED_OPENSSL=ON `
+            -DYUZU_TESTS=OFF `
+            -DENABLE_WEB_SERVICE=OFF `
+            -DENABLE_UPDATE_CHECKER=OFF `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl
+
+      - name: Build
+        run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+
+      - name: Package
+        run: |
+          mkdir artifact
+          copy build\bin\eden.exe artifact\ || true
+          copy -r dist\qt_themes artifact\ || true
+          copy -r dist\languages artifact\ || true
+          copy dist\compatibility_list artifact\ || true
+          Compress-Archive -Path artifact\* -DestinationPath eden-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eden-windows-x64
+          path: eden-windows-x64.zip
+          retention-days: 30
