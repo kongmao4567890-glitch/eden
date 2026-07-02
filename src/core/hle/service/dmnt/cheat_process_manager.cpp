@@ -67,7 +67,7 @@ bool CheatProcessManager::HasActiveCheatProcess() {
 void CheatProcessManager::CloseActiveCheatProcess() {
     if (cheat_process_debug_handle != InvalidHandle) {
         broken_unsafe = false;
-        unsafe_break_event->Signal();
+        unsafe_break_event->Signal(system.Kernel());
         core_timing.UnscheduleEvent(update_event);
 
         // Close resources.
@@ -90,7 +90,7 @@ void CheatProcessManager::CloseActiveCheatProcess() {
             }
         }
 
-        cheat_process_event->Signal();
+        cheat_process_event->Signal(system.Kernel());
     }
 }
 
@@ -199,13 +199,13 @@ Result CheatProcessManager::AttachToApplicationProcess(const std::array<u8, 0x20
     cheat_process_debug_handle = cheat_process_metadata.process_id;
 
     broken_unsafe = false;
-    unsafe_break_event->Signal();
+    unsafe_break_event->Signal(system.Kernel());
 
     core_timing.ScheduleLoopingEvent(CHEAT_ENGINE_NS, CHEAT_ENGINE_NS, update_event);
     LOG_INFO(CheatEngine, "Cheat engine started");
 
     // Signal to our fans.
-    cheat_process_event->Signal();
+    cheat_process_event->Signal(system.Kernel());
 
     R_SUCCEED();
 }
@@ -232,11 +232,11 @@ Result CheatProcessManager::PauseCheatProcess() {
 
 Result CheatProcessManager::PauseCheatProcessUnsafe() {
     broken_unsafe = true;
-    unsafe_break_event->Clear();
+    unsafe_break_event->Clear(system.Kernel());
     if (system.ApplicationProcess()->IsSuspended()) {
         R_SUCCEED();
     }
-    R_RETURN(system.ApplicationProcess()->SetActivity(Kernel::Svc::ProcessActivity::Paused));
+    R_RETURN(system.ApplicationProcess()->SetActivity(system.Kernel(), Kernel::Svc::ProcessActivity::Paused));
 }
 
 Result CheatProcessManager::ResumeCheatProcess() {
@@ -248,11 +248,11 @@ Result CheatProcessManager::ResumeCheatProcess() {
 
 Result CheatProcessManager::ResumeCheatProcessUnsafe() {
     broken_unsafe = true;
-    unsafe_break_event->Clear();
+    unsafe_break_event->Clear(system.Kernel());
     if (!system.ApplicationProcess()->IsSuspended()) {
         R_SUCCEED();
     }
-    system.ApplicationProcess()->SetActivity(Kernel::Svc::ProcessActivity::Runnable);
+    system.ApplicationProcess()->SetActivity(system.Kernel(), Kernel::Svc::ProcessActivity::Runnable);
     R_SUCCEED();
 }
 
