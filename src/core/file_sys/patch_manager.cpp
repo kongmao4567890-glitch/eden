@@ -474,25 +474,29 @@ bool PatchManager::HasNSOPatch(const BuildID& build_id_, std::string_view name) 
 std::vector<Service::DMNT::CheatEntry> PatchManager::CreateCheatList(
     const BuildID& build_id_) const {
     const auto load_dir = fs_controller.GetModificationLoadRoot(title_id);
-    const auto sdmc_load_dir = fs_controller.GetSDMCModificationLoadRoot(title_id);
-    if (load_dir == nullptr && sdmc_load_dir == nullptr) {
+    if (load_dir == nullptr) {
         LOG_ERROR(Loader, "Cannot load mods for invalid title_id={:016X}", title_id);
         return {};
     }
 
     const auto& disabled = Settings::values.disabled_addons[title_id];
-    std::vector<Service::DMNT::CheatEntry> out;
+    auto patch_dirs = load_dir->GetSubdirectories();
+    std::sort(patch_dirs.begin(), patch_dirs.end(),
+              [](const VirtualDir& l, const VirtualDir& r) { return l->GetName() < r->GetName(); });
 
-    // Helper lambda to load cheats from a mod directory
-    auto loadCheatsFromMod = [&](const VirtualDir& mod, const std::string& mod_name) {
+    // Load cheats from: <mod dir>/<folder>/cheats/<build_id>.txt
+    std::vector<Service::DMNT::CheatEntry> out;
+    for (const auto& subdir : patch_dirs) {
+        const auto mod_name = subdir->GetName();
+
         // Skip entirely disabled mods
         if (std::find(disabled.cbegin(), disabled.cend(), mod_name) != disabled.cend()) {
-            return;
+            continue;
         }
 
-        auto cheats_dir = FindSubdirectoryCaseless(mod, "cheats");
+        auto cheats_dir = FindSubdirectoryCaseless(subdir, "cheats");
         if (cheats_dir == nullptr) {
-            return;
+            continue;
         }
 
         // Try uppercase build_id first, then lowercase
@@ -510,8 +514,7 @@ std::vector<Service::DMNT::CheatEntry> PatchManager::CreateCheatList(
                 const std::string cheat_name = entry.definition.readable_name.data();
                 const std::string cheat_key = mod_name + "::" + cheat_name;
 
-                if (std::find(disabled.cbegin(), disabled.cend(), cheat_key) !=
-                    disabled.cend()) {
+                if (std::find(disabled.cbegin(), disabled.cend(), cheat_key) != disabled.cend()) {
                     // Individual cheat is disabled - mark it as disabled but still include it
                     entry.enabled = false;
                 }
@@ -519,48 +522,29 @@ std::vector<Service::DMNT::CheatEntry> PatchManager::CreateCheatList(
                 out.push_back(entry);
             }
         }
-    };
-
-    // Load cheats from NAND mod directories: <mod dir>/<folder>/cheats/<build_id>.txt
-    if (load_dir != nullptr) {
-        auto patch_dirs = load_dir->GetSubdirectories();
-        std::sort(patch_dirs.begin(), patch_dirs.end(),
-                  [](const VirtualDir& l, const VirtualDir& r) {
-                      return l->GetName() < r->GetName();
-                  });
-
-        for (const auto& subdir : patch_dirs) {
-            loadCheatsFromMod(subdir, subdir->GetName());
-        }
-
-        // User-friendly cheat loading from: <mod dir>/cheat_*.txt
-        for (const auto& file : load_dir->GetFiles()) {
-            const auto& name = file->GetName();
-            if (!name.starts_with("cheat_")) {
-                continue;
-            }
-            if (std::find(disabled.cbegin(), disabled.cend(), name) != disabled.cend()) {
-                continue;
-            }
-
-            std::vector<u8> data(file->GetSize());
-            if (file->Read(data.data(), data.size()) != static_cast<size_t>(data.size())) {
-                LOG_WARNING(Common_Filesystem,
-                            "Failed to read cheat file '{}' for title_id={:016X}", name,
-                            title_id);
-                continue;
-            }
-
-            const Service::DMNT::CheatParser parser;
-            auto entries = parser.Parse(
-                std::string_view(reinterpret_cast<const char*>(data.data()), data.size()));
-            out.insert(out.end(), entries.begin(), entries.end());
-        }
     }
 
-    // Load cheats from SDMC mod directory (Atmosphere-style)
-    if (sdmc_load_dir != nullptr) {
-        loadCheatsFromMod(sdmc_load_dir, "Atmosphere");
+    // User-friendly cheat loading from: <mod dir>/cheat_*.txt
+    for (const auto& file : load_dir->GetFiles()) {
+        const auto& name = file->GetName();
+        if (!name.starts_with("cheat_")) {
+            continue;
+        }
+        if (std::find(disabled.cbegin(), disabled.cend(), name) != disabled.cend()) {
+            continue;
+        }
+
+        std::vector<u8> data(file->GetSize());
+        if (file->Read(data.data(), data.size()) != static_cast<size_t>(data.size())) {
+            LOG_WARNING(Common_Filesystem, "Failed to read cheat file '{}' for title_id={:016X}",
+                        name, title_id);
+            continue;
+        }
+
+        const Service::DMNT::CheatParser parser;
+        auto entries =
+            parser.Parse(std::string_view(reinterpret_cast<const char*>(data.data()), data.size()));
+        out.insert(out.end(), entries.begin(), entries.end());
     }
 
     return out;
@@ -1082,12 +1066,11 @@ std::vector<Patch> PatchManager::GetPatches(VirtualFile update_raw) const {
 
                 if (!cheat_entries.empty()) {
                     for (const auto& cheat : cheat_entries) {
-                        if (cheat.cheat_id == 0 ||
-                            cheat.definition.readable_name[0] == '\0' ||
-                            cheat.definition.num_opcodes == 0)
+                        if (cheat.cheat_id <= 1 || cheat.definition.readable_name[0] == '\0')
                             continue;
                         const std::string cheat_name = cheat.definition.readable_name.data();
-                        const std::string cheat_key = mod_name + "::" + cheat_name;
+                        const std::string cheat_key =
+                            (is_sdmc ? "SDMC" : mod->GetName()) + "::" + cheat_name;
                         out.push_back({
                             .enabled = std::find(disabled.begin(), disabled.end(), cheat_key) ==
                                        disabled.end(),

@@ -31,12 +31,17 @@ class AddonViewModel : ViewModel() {
     val addonToDelete = _addonToDelete.asStateFlow()
 
     var game: Game? = null
+        private set
+
     private var loadedGameKey: String? = null
 
     private val isRefreshing = AtomicBoolean(false)
     private val pendingRefresh = AtomicBoolean(false)
 
     fun onAddonsViewCreated(game: Game) {
+        if (this.game?.programId == game.programId && _patchList.value.isNotEmpty()) {
+            return
+        }
         this.game = game
         refreshAddons(commitEmpty = false)
     }
