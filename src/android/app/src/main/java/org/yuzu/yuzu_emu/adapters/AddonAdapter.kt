@@ -8,6 +8,8 @@ package org.yuzu.yuzu_emu.adapters
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import org.yuzu.yuzu_emu.databinding.ListItemAddonBinding
 import org.yuzu.yuzu_emu.model.Patch
 import org.yuzu.yuzu_emu.model.PatchType
@@ -24,13 +26,25 @@ class AddonAdapter(val addonViewModel: AddonViewModel) :
     inner class AddonViewHolder(val binding: ListItemAddonBinding) :
         AbstractViewHolder<Patch>(binding) {
         override fun bind(model: Patch) {
-            binding.addonCard.setOnClickListener {
-                binding.addonSwitch.performClick()
+            val isCheat = model.isCheat()
+            val isIncompatible = isCheat && model.cheatCompat == Patch.CHEAT_COMPAT_INCOMPATIBLE
+            val indentPx = if (isCheat) {
+                (32 * binding.root.context.resources.displayMetrics.density).toInt()
+            } else {
+                0
             }
+            binding.root.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                marginStart = indentPx
+            }
+            binding.addonCard.setOnClickListener(
+                if (isIncompatible) null else { { binding.addonSwitch.performClick() } }
+            )
             binding.title.text = model.name
             binding.version.text = model.version
+            binding.addonSwitch.setOnCheckedChangeListener(null)
             binding.addonSwitch.isChecked = model.enabled
-
+            binding.addonSwitch.isEnabled = !isIncompatible
+            binding.addonSwitch.alpha = if (isIncompatible) 0.38f else 1.0f
             binding.addonSwitch.setOnCheckedChangeListener { _, checked ->
                 if (PatchType.from(model.type) == PatchType.Update && checked) {
                     addonViewModel.enableOnlyThisUpdate(model)
@@ -39,12 +53,9 @@ class AddonAdapter(val addonViewModel: AddonViewModel) :
                     model.enabled = checked
                 }
             }
-
-            val canDelete = model.isRemovable
-            binding.deleteCard.isEnabled = canDelete
-            binding.buttonDelete.isEnabled = canDelete
-            binding.deleteCard.alpha = if (canDelete) 1f else 0.38f
-
+            val canDelete = model.isRemovable && !isCheat
+            binding.deleteCard.isVisible = canDelete
+            binding.buttonDelete.isVisible = canDelete
             if (canDelete) {
                 val deleteAction = {
                     addonViewModel.setAddonToDelete(model)

@@ -66,8 +66,7 @@ class AddonViewModel : ViewModel() {
                     NativeLibrary.getPatchesForFile(currentGame.path, currentGame.programId)
                 } ?: return@launch
 
-                val patchList = patches.toMutableList()
-                patchList.sortBy { it.name }
+                val patchList = sortPatchesWithCheatsGrouped(patches.toMutableList())
 
                 // Ensure only one update is enabled
                 ensureSingleUpdateEnabled(patchList)
@@ -146,6 +145,7 @@ class AddonViewModel : ViewModel() {
             PatchType.Update -> NativeLibrary.removeUpdate(patch.programId)
             PatchType.DLC -> NativeLibrary.removeDLC(patch.programId)
             PatchType.Mod -> NativeLibrary.removeMod(patch.programId, patch.name)
+            PatchType.Cheat -> {}
         }
         refreshAddons(force = true)
     }
@@ -179,7 +179,7 @@ class AddonViewModel : ViewModel() {
                             it.name
                         }
                     } else {
-                        it.name
+                        it.getStorageKey()
                     }
                 }
             }.toTypedArray()
@@ -200,5 +200,29 @@ class AddonViewModel : ViewModel() {
 
     private fun gameKey(game: Game): String {
         return "${game.programId}|${game.path}"
+    }
+
+    private fun sortPatchesWithCheatsGrouped(patches: MutableList<Patch>): MutableList<Patch> {
+        val individualCheats = patches.filter { it.isCheat() }
+        val nonCheats = patches.filter { !it.isCheat() }.sortedBy { it.name }
+
+        val cheatsByParent = individualCheats.groupBy { it.parentName }
+
+        val result = mutableListOf<Patch>()
+        for (patch in nonCheats) {
+            result.add(patch)
+            cheatsByParent[patch.name]?.sortedBy { it.name }?.let { childCheats ->
+                result.addAll(childCheats)
+            }
+        }
+
+        val knownParents = nonCheats.map { it.name }.toSet()
+        for ((parentName, orphanCheats) in cheatsByParent) {
+            if (parentName !in knownParents) {
+                result.addAll(orphanCheats.sortedBy { it.name })
+            }
+        }
+
+        return result
     }
 }

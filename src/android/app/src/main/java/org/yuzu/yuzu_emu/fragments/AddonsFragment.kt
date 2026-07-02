@@ -72,7 +72,7 @@ class AddonsFragment : Fragment() {
         }
 
         addonViewModel.addonList.collect(viewLifecycleOwner) {
-            (binding.listAddons.adapter as AddonAdapter).submitList(it)
+            (binding.listAddons.adapter as AddonAdapter).submitList(it.toList())
         }
         addonViewModel.showModInstallPicker.collect(
             viewLifecycleOwner,

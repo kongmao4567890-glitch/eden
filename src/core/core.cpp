@@ -40,6 +40,7 @@
 #include "core/hle/service/am/frontend/applets.h"
 #include "core/hle/service/am/process_creation.h"
 #include "core/hle/service/apm/apm_controller.h"
+#include "core/hle/service/dmnt/cheat_process_manager.h"
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/glue/glue_manager.h"
 #include "core/hle/service/glue/time/static.h"
@@ -54,7 +55,6 @@
 #include "core/internal_network/network.h"
 #include "core/loader/loader.h"
 #include "core/memory.h"
-#include "core/memory/cheat_engine.h"
 #include "core/perf_stats.h"
 #include "core/reporter.h"
 #include "core/tools/freezer.h"
@@ -278,7 +278,16 @@ struct System::Impl {
         audio_core.emplace(system);
 
         service_manager = std::make_shared<Service::SM::ServiceManager>(kernel);
+
+        // Create cheat_manager BEFORE services, as DMNT::LoopProcess needs it
+        cheat_manager = std::make_unique<Service::DMNT::CheatProcessManager>(system);
+
         services.emplace(service_manager, system, stop_event.get_token());
+
+        // Apply any pending cheats that were registered before cheat_manager was initialized
+        if (pending_cheats.has_pending) {
+            ApplyPendingCheats(system);
+        }
 
         is_powered_on = true;
         exit_locked = false;
@@ -343,11 +352,6 @@ struct System::Impl {
             return init_result;
         }
 
-        // Initialize cheat engine
-        if (cheat_engine) {
-            cheat_engine->Initialize();
-        }
-
         // Register with applet manager
         // All threads are started, begin main process execution, now that we're in the clear
         applet_manager.CreateAndInsertByFrontendAppletParameters(std::move(process), params);
@@ -406,7 +410,6 @@ struct System::Impl {
         services.reset();
         service_manager.reset();
         fs_controller.Reset();
-        cheat_engine.reset();
         core_timing.ClearPendingEvents();
         app_loader.reset();
         audio_core.reset();
@@ -476,7 +479,6 @@ struct System::Impl {
     std::optional<Tegra::Host1x::Host1x> host1x_core;
     std::optional<Core::DeviceMemory> device_memory;
     std::optional<AudioCore::AudioCore> audio_core;
-    std::optional<Memory::CheatEngine> cheat_engine;
     std::optional<Tools::Freezer> memory_freezer;
     std::optional<Tools::RenderdocAPI> renderdoc_api;
     std::optional<Tegra::GPU> gpu_core;
@@ -496,6 +498,17 @@ struct System::Impl {
     std::unique_ptr<Loader::AppLoader> app_loader;
     std::stop_source stop_event;
 
+    /// Cheat Manager (DMNT)
+    std::unique_ptr<Service::DMNT::CheatProcessManager> cheat_manager;
+    /// Pending cheats to register after cheat_manager is initialized
+    struct PendingCheats {
+        std::vector<Service::DMNT::CheatEntry> list;
+        std::array<u8, 32> build_id{};
+        u64 main_region_begin{};
+        u64 main_region_size{};
+        bool has_pending{false};
+    } pending_cheats;
+
     mutable std::mutex suspend_guard;
     std::mutex general_channel_mutex;
     std::atomic_bool is_paused{};
@@ -512,6 +525,61 @@ struct System::Impl {
             general_channel_context.emplace(system, "GeneralChannel");
             general_channel_event.emplace(*general_channel_context);
         }
+    }
+
+    void ApplyPendingCheats(System& system) {
+        if (!pending_cheats.has_pending || !cheat_manager) {
+            return;
+        }
+
+        LOG_DEBUG(Core, "Applying {} pending cheats", pending_cheats.list.size());
+
+        const auto result = cheat_manager->AttachToApplicationProcess(
+            pending_cheats.build_id, pending_cheats.main_region_begin,
+            pending_cheats.main_region_size);
+
+        if (result.IsError()) {
+            LOG_WARNING(Core, "Failed to attach cheat process: result={}", result.raw);
+            pending_cheats = {};
+            return;
+        }
+
+        LOG_DEBUG(Core, "Cheat process attached successfully");
+
+        for (const auto& entry : pending_cheats.list) {
+            if (entry.cheat_id == 0 && entry.definition.num_opcodes != 0) {
+                LOG_DEBUG(Core, "Setting master cheat '{}' with {} opcodes",
+                         entry.definition.readable_name.data(), entry.definition.num_opcodes);
+                const auto set_result = cheat_manager->SetMasterCheat(entry.definition);
+                if (set_result.IsError()) {
+                    LOG_WARNING(Core, "Failed to set master cheat: result={}", set_result.raw);
+                }
+                break;
+            }
+        }
+
+        // Add normal cheats (cheat_id != 0)
+        for (const auto& entry : pending_cheats.list) {
+            if (entry.cheat_id == 0 || entry.definition.num_opcodes == 0) {
+                continue;
+            }
+
+            u32 assigned_id = 0;
+            LOG_DEBUG(Core, "Adding cheat '{}' (enabled={}, {} opcodes)",
+                     entry.definition.readable_name.data(), entry.enabled,
+                     entry.definition.num_opcodes);
+            const auto add_result = cheat_manager->AddCheat(assigned_id, entry.enabled,
+                                                            entry.definition);
+            if (add_result.IsError()) {
+                LOG_WARNING(Core,
+                            "Failed to add cheat (original_id={} enabled={} name='{}'): result={}",
+                            entry.cheat_id, entry.enabled,
+                            entry.definition.readable_name.data(), add_result.raw);
+            }
+        }
+
+        // Clear pending cheats
+        pending_cheats = {};
     }
 };
 
@@ -750,11 +818,61 @@ FileSys::VirtualFilesystem System::GetFilesystem() const {
     return impl->virtual_filesystem;
 }
 
-void System::RegisterCheatList(const std::vector<Memory::CheatEntry>& list,
+void System::RegisterCheatList(const std::vector<Service::DMNT::CheatEntry>& list,
                                const std::array<u8, 32>& build_id, u64 main_region_begin,
                                u64 main_region_size) {
-    impl->cheat_engine.emplace(*this, list, build_id);
-    impl->cheat_engine->SetMainMemoryParameters(main_region_begin, main_region_size);
+    // If cheat_manager is not yet initialized, cache the cheats for later
+    if (!impl->cheat_manager) {
+        impl->pending_cheats.list = list;
+        impl->pending_cheats.build_id = build_id;
+        impl->pending_cheats.main_region_begin = main_region_begin;
+        impl->pending_cheats.main_region_size = main_region_size;
+        impl->pending_cheats.has_pending = true;
+        LOG_INFO(Core, "Cached {} cheats for later registration", list.size());
+        return;
+    }
+
+    // Attach cheat process to the current application process
+    const auto result = impl->cheat_manager->AttachToApplicationProcess(build_id, main_region_begin,
+                                                                        main_region_size);
+    if (result.IsError()) {
+        LOG_WARNING(Core, "Failed to attach cheat process: result={}", result.raw);
+        return;
+    }
+
+    // Empty list: nothing more to do
+    if (list.empty()) {
+        return;
+    }
+
+    // Set master cheat if present (cheat_id == 0)
+    for (const auto& entry : list) {
+        if (entry.cheat_id == 0 && entry.definition.num_opcodes != 0) {
+            const auto set_result = impl->cheat_manager->SetMasterCheat(entry.definition);
+            if (set_result.IsError()) {
+                LOG_WARNING(Core, "Failed to set master cheat: result={}", set_result.raw);
+            }
+            // Only one master cheat allowed
+            break;
+        }
+    }
+
+    // Add normal cheats (cheat_id != 0)
+    for (const auto& entry : list) {
+        if (entry.cheat_id == 0 || entry.definition.num_opcodes == 0) {
+            continue;
+        }
+
+        u32 assigned_id = 0;
+        const auto add_result = impl->cheat_manager->AddCheat(assigned_id, entry.enabled,
+                                                               entry.definition);
+        if (add_result.IsError()) {
+            LOG_WARNING(Core,
+                        "Failed to add cheat (original_id={} enabled={} name='{}'): result={}",
+                        entry.cheat_id, entry.enabled,
+                        entry.definition.readable_name.data(), add_result.raw);
+        }
+    }
 }
 
 void System::SetFrontendAppletSet(Service::AM::Frontend::FrontendAppletSet&& set) {
@@ -892,6 +1010,14 @@ const Core::Debugger& System::GetDebugger() const {
 
 Tools::RenderdocAPI& System::GetRenderdocAPI() {
     return *impl->renderdoc_api;
+}
+
+Service::DMNT::CheatProcessManager& System::GetCheatManager() {
+    return *impl->cheat_manager;
+}
+
+const Service::DMNT::CheatProcessManager& System::GetCheatManager() const {
+    return *impl->cheat_manager;
 }
 
 void System::RunServer(std::unique_ptr<Service::ServerManager>&& server_manager) {
