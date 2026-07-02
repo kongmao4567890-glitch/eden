@@ -36,9 +36,11 @@ class AddonAdapter(val addonViewModel: AddonViewModel) :
             binding.root.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 marginStart = indentPx
             }
-            binding.addonCard.setOnClickListener(
-                if (isIncompatible) null else { binding.addonSwitch.performClick(); }
-            )
+            if (isIncompatible) {
+                binding.addonCard.setOnClickListener(null)
+            } else {
+                binding.addonCard.setOnClickListener { binding.addonSwitch.performClick() }
+            }
             binding.title.text = model.name
             binding.version.text = model.version
             binding.addonSwitch.setOnCheckedChangeListener(null)
