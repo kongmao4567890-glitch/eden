@@ -1189,12 +1189,12 @@ Mainly used for speedrunning.</source>
     <message>
         <location filename="../../src/qt_common/config/shared_translation.cpp" line="304"/>
         <source>Homebrew Args</source>
-        <translation type="unfinished"/>
+        <translation>自制程序参数</translation>
     </message>
     <message>
         <location filename="../../src/qt_common/config/shared_translation.cpp" line="305"/>
         <source>Command-line arguments passed to homebrew at launch (e.g. -noglsl).</source>
-        <translation type="unfinished"/>
+        <translation>启动时传递给自制程序的命令行参数（例如 -noglsl）。</translation>
     </message>
     <message>
         <location filename="../../src/qt_common/config/shared_translation.cpp" line="306"/>
@@ -7292,7 +7292,7 @@ Debug Message: </source>
     <message>
         <location filename="../../src/yuzu/main.ui" line="629"/>
         <source>&amp;Carousel View</source>
-        <translation type="unfinished"/>
+        <translation>轮播视图(&amp;C)</translation>
     </message>
     <message>
         <location filename="../../src/yuzu/main_window.cpp" line="325"/>
