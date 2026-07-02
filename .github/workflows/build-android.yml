@@ -41,36 +41,38 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x src/android/gradlew
 
+      - name: List available Gradle tasks
+        working-directory: src/android
+        run: ./gradlew :app:tasks --no-daemon --all 2>&1 | grep -i "assemble" || true
+
       - name: Build Default APK (arm64-v8a)
         working-directory: src/android
-        run: ./gradlew :app:assembleDefaultRelease --no-daemon -Pandroid.native.buildOutput=verbose
+        run: ./gradlew :app:assembleRelease --no-daemon -Pandroid.native.buildOutput=verbose
 
       - name: Sign APK
         run: |
           cd src/android
-          APK_DIR="app/build/outputs/apk/default/release"
-          if [ -f "$APK_DIR/app-default-release-unsigned.apk" ]; then
-            BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | tail -1)
-            $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner sign \
-              --ks app/debug.keystore \
-              --ks-pass pass:android \
-              --ks-key-alias androiddebugkey \
-              --key-pass pass:android \
-              --out "$APK_DIR/eden-android-arm64.apk" \
-              "$APK_DIR/app-default-release-unsigned.apk"
-            echo "APK signed successfully"
-          elif [ -f "$APK_DIR/app-default-release.apk" ]; then
-            cp "$APK_DIR/app-default-release.apk" "$APK_DIR/eden-android-arm64.apk"
-            echo "APK already signed"
-          else
-            echo "No APK found! Searching..."
-            find app/build/outputs -name "*.apk" 2>/dev/null
+          echo "Searching for APK files..."
+          find app/build/outputs -name "*.apk" 2>/dev/null
+          APK=$(find app/build/outputs -name "*-release*.apk" -o -name "*-unsigned*.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "No APK found!"
             exit 1
           fi
+          APK_DIR=$(dirname "$APK")
+          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | tail -1)
+          $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner sign \
+            --ks app/debug.keystore \
+            --ks-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --key-pass pass:android \
+            --out "$APK_DIR/eden-android-arm64.apk" \
+            "$APK"
+          echo "APK signed successfully: $APK_DIR/eden-android-arm64.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: eden-android-arm64
-          path: src/android/app/build/outputs/apk/default/release/eden-android-arm64.apk
+          path: src/android/app/build/outputs/apk/**/eden-android-arm64.apk
           retention-days: 30
