@@ -1066,11 +1066,10 @@ std::vector<Patch> PatchManager::GetPatches(VirtualFile update_raw) const {
 
                 if (!cheat_entries.empty()) {
                     for (const auto& cheat : cheat_entries) {
-                        if (cheat.cheat_id <= 1 || cheat.definition.readable_name[0] == '\0')
+                        if (cheat.cheat_id == 0 || cheat.definition.readable_name[0] == '\0')
                             continue;
                         const std::string cheat_name = cheat.definition.readable_name.data();
-                        const std::string cheat_key =
-                            (is_sdmc ? "SDMC" : mod->GetName()) + "::" + cheat_name;
+                        const std::string cheat_key = mod_name + "::" + cheat_name;
                         out.push_back({
                             .enabled = std::find(disabled.begin(), disabled.end(), cheat_key) ==
                                        disabled.end(),

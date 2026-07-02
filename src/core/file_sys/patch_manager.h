@@ -43,8 +43,8 @@ enum class PatchSource {
 };
 
 enum class CheatCompatibility : u8 {
-    Incompatible,
-    Compatible,
+    Compatible = 0,
+    Incompatible = 1,
 };
 
 struct Patch {
@@ -58,7 +58,7 @@ struct Patch {
     std::string location;
     u32 numeric_version{0};
     std::string parent_name;
-    CheatCompatibility cheat_compat{CheatCompatibility::Incompatible};
+    CheatCompatibility cheat_compat{CheatCompatibility::Compatible};
 };
 
 // A centralized class to manage patches to games.
