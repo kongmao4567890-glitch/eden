@@ -25,7 +25,7 @@ jobs:
             cmake \
             ninja-build \
             glslang-tools \
-            libboost-context-dev \
+            libboost-all-dev \
             libssl-dev \
             libusb-1.0-0-dev \
             libsndio-dev \
