@@ -37,12 +37,19 @@ jobs:
           echo "Found glslangValidator at: $glslangBin"
           echo "$glslangBin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      - name: Install Qt6 via aqtinstall
+        run: |
+          pip install aqtinstall
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -m qtcharts qtmultimedia qtsvg qttools qttranslations
+          echo "C:\Qt\6.8.3\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Configure CMake
         run: |
           cmake -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DENABLE_QT=ON `
-            -DYUZU_USE_BUNDLED_QT=ON `
+            -DYUZU_USE_BUNDLED_QT=OFF `
+            -DQt6_DIR=C:/Qt/6.8.3/msvc2022_64/lib/cmake/Qt6 `
             -DYUZU_USE_BUNDLED_FFMPEG=ON `
             -DYUZU_USE_BUNDLED_SDL3=ON `
             -DYUZU_USE_BUNDLED_SIRIT=ON `
