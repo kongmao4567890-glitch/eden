@@ -43,7 +43,7 @@ jobs:
 
       - name: Build Default APK (arm64-v8a)
         working-directory: src/android
-        run: ./gradlew assembleDefaultRelease --no-daemon -Pandroid.native.buildOutput=verbose
+        run: ./gradlew :app:assembleDefaultRelease --no-daemon -Pandroid.native.buildOutput=verbose
 
       - name: Sign APK
         run: |
