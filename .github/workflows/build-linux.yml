@@ -31,9 +31,6 @@ jobs:
             libsndio-dev \
             libpulse-dev \
             libgl-dev \
-            libzstd-dev \
-            liblz4-dev \
-            libfmt-dev \
             libxml2-dev \
             libavcodec-dev \
             libavutil-dev \
