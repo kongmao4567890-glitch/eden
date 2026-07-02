@@ -23,6 +23,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install glslangValidator
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+
       - name: Setup Android SDK components
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
@@ -41,13 +44,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x src/android/gradlew
 
-      - name: List available Gradle tasks
+      - name: Build Default APK
         working-directory: src/android
-        run: ./gradlew :app:tasks --no-daemon --all 2>&1 | grep -i "assemble" || true
-
-      - name: Build Default APK (arm64-v8a)
-        working-directory: src/android
-        run: ./gradlew :app:assembleRelease --no-daemon -Pandroid.native.buildOutput=verbose
+        run: ./gradlew :app:assembleDefaultRelease --no-daemon -Pandroid.native.buildOutput=verbose || ./gradlew :app:assembleRelease --no-daemon -Pandroid.native.buildOutput=verbose
 
       - name: Sign APK
         run: |
