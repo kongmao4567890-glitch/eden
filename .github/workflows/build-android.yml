@@ -24,12 +24,41 @@ jobs:
           java-version: '17'
 
       - name: Install glslangValidator
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools nasm
 
       - name: Setup Android SDK components
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "ndk;28.2.13676358" "cmake;3.31.6"
+
+      - name: Build OpenSSL for Android ARM64
+        run: |
+          NDK=$ANDROID_HOME/ndk/28.2.13676358
+          TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+          API=24
+          export PATH="$TOOLCHAIN/bin:$PATH"
+          export CC=$TOOLCHAIN/bin/aarch64-linux-android$API-clang
+          export CXX=$TOOLCHAIN/bin/aarch64-linux-android$API-clang++
+          export AR=$TOOLCHAIN/bin/llvm-ar
+          export AS=$TOOLCHAIN/bin/llvm-as
+          export LD=$TOOLCHAIN/bin/ld
+          export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+          export STRIP=$TOOLCHAIN/bin/llvm-strip
+
+          git clone --depth 1 --branch openssl-3.4.1 https://github.com/openssl/openssl.git /tmp/openssl
+          cd /tmp/openssl
+          ./Configure android-arm64 no-shared no-tests \
+            -D__ANDROID_API__=$API \
+            --prefix=/tmp/openssl-install
+          make -j$(nproc)
+          make install_sw
+
+      - name: Patch build.gradle.kts to use local OpenSSL
+        run: |
+          cd src/android
+          sed -i 's/"-DYUZU_USE_BUNDLED_FFMPEG=ON"/"-DYUZU_USE_BUNDLED_FFMPEG=ON",\n                                        "-DYUZU_USE_BUNDLED_OPENSSL=OFF",\n                                        "-DOPENSSL_ROOT_DIR=\/tmp\/openssl-install",\n                                        "-DOPENSSL_USE_STATIC_LIBS=ON"/' app/build.gradle.kts
+          echo "=== Patched build.gradle.kts ==="
+          grep -A2 "OPENSSL" app/build.gradle.kts || echo "Patch not found!"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -37,7 +66,6 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            .cache/cpm
           key: ${{ runner.os }}-gradle-${{ hashFiles('src/android/**/*.gradle*', 'src/android/**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
