@@ -25,8 +25,6 @@ jobs:
       - name: Install dependencies
         run: |
           choco install cmake ninja -y
-          echo "C:\Program Files\CMake\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          echo "C:\Program Files\Ninja" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install glslangValidator
         run: |
@@ -44,7 +42,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
-          modules: 'qtcharts qtmultimedia qtsvg'
+          modules: 'qtcharts qtmultimedia'
 
       - name: Configure CMake
         run: |
@@ -52,7 +50,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DENABLE_QT=ON `
             -DYUZU_USE_BUNDLED_QT=OFF `
-            -DQt6_DIR=C:/Qt/6.8.3/msvc2022_64/lib/cmake/Qt6 `
             -DYUZU_USE_BUNDLED_FFMPEG=ON `
             -DYUZU_USE_BUNDLED_SDL3=ON `
             -DYUZU_USE_BUNDLED_SIRIT=ON `
