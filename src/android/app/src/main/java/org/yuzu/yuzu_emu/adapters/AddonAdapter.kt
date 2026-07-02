@@ -37,7 +37,7 @@ class AddonAdapter(val addonViewModel: AddonViewModel) :
                 marginStart = indentPx
             }
             binding.addonCard.setOnClickListener(
-                if (isIncompatible) null else { { binding.addonSwitch.performClick() } }
+                if (isIncompatible) null else { binding.addonSwitch.performClick() }
             )
             binding.title.text = model.name
             binding.version.text = model.version
