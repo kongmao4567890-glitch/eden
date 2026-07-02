@@ -34,21 +34,13 @@ jobs:
       - name: Build OpenSSL for Android ARM64
         run: |
           NDK=$ANDROID_HOME/ndk/28.2.13676358
-          TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-          API=24
-          export PATH="$TOOLCHAIN/bin:$PATH"
-          export CC=$TOOLCHAIN/bin/aarch64-linux-android$API-clang
-          export CXX=$TOOLCHAIN/bin/aarch64-linux-android$API-clang++
-          export AR=$TOOLCHAIN/bin/llvm-ar
-          export AS=$TOOLCHAIN/bin/llvm-as
-          export LD=$TOOLCHAIN/bin/ld
-          export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
-          export STRIP=$TOOLCHAIN/bin/llvm-strip
+          export ANDROID_NDK_ROOT=$NDK
+          export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 
           git clone --depth 1 --branch openssl-3.4.1 https://github.com/openssl/openssl.git /tmp/openssl
           cd /tmp/openssl
           ./Configure android-arm64 no-shared no-tests \
-            -D__ANDROID_API__=$API \
+            -D__ANDROID_API__=24 \
             --prefix=/tmp/openssl-install
           make -j$(nproc)
           make install_sw
