@@ -37,11 +37,14 @@ jobs:
           echo "Found glslangValidator at: $glslangBin"
           echo "$glslangBin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Install Qt6 via aqtinstall
-        run: |
-          pip install aqtinstall
-          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -m qtcharts qtmultimedia qtsvg qttools qttranslations
-          echo "C:\Qt\6.8.3\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtcharts qtmultimedia qtsvg'
 
       - name: Configure CMake
         run: |
