@@ -67,10 +67,27 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
           Copy-Item -Path build\bin\eden.exe -Destination artifact\ -ErrorAction SilentlyContinue
-          # Run windeployqt to collect all Qt6 runtime DLLs
+          # Copy all DLLs from build/bin (FFmpeg, SDL3, etc.)
+          Get-ChildItem -Path build\bin\*.dll | Copy-Item -Destination artifact\ -ErrorAction SilentlyContinue
+          # Run windeployqt to collect all Qt6 runtime DLLs and platform plugins
           windeployqt.exe --release --no-translations --no-system-d3d-compiler `
             --no-opengl-sw --no-quick-import `
             artifact\eden.exe
+          # Copy MSVC runtime DLLs
+          $vcToolsDir = "$env:VCToolsRedistDir\merge_modules\Microsoft_VC${VCToolsVersion:0:2}_CRT_x64.msm"
+          $redistPath = Get-ChildItem -Path "$env:VCToolsRedistDir" -Recurse -Filter "vcruntime140.dll" | Select-Object -First 1 -ExpandProperty DirectoryName
+          if ($redistPath) {
+            Copy-Item -Path "$redistPath\*.dll" -Destination artifact\ -ErrorAction SilentlyContinue
+            Write-Host "Copied MSVC runtime DLLs from $redistPath"
+          }
+          # Copy FFmpeg DLLs if they exist in build subdirs
+          Get-ChildItem -Path build -Recurse -Filter "avcodec*.dll" | Select-Object -First 1 -ExpandProperty DirectoryName | ForEach-Object {
+            Get-ChildItem -Path "$_\*.dll" | Copy-Item -Destination artifact\ -ErrorAction SilentlyContinue
+            Write-Host "Copied FFmpeg DLLs from $_"
+          }
+          # List all files in artifact for verification
+          Write-Host "=== Artifact contents ==="
+          Get-ChildItem -Path artifact\ -Recurse | Select-Object FullName, Length
           Copy-Item -Path dist\qt_themes -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
           Copy-Item -Path dist\languages -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
           Copy-Item -Path dist\compatibility_list -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
