@@ -73,9 +73,8 @@ jobs:
           windeployqt.exe --release --no-translations --no-system-d3d-compiler `
             --no-opengl-sw --no-quick-import `
             artifact\eden.exe
-          # Copy MSVC runtime DLLs
-          $vcToolsDir = "$env:VCToolsRedistDir\merge_modules\Microsoft_VC${VCToolsVersion:0:2}_CRT_x64.msm"
-          $redistPath = Get-ChildItem -Path "$env:VCToolsRedistDir" -Recurse -Filter "vcruntime140.dll" | Select-Object -First 1 -ExpandProperty DirectoryName
+          # Copy MSVC runtime DLLs (x64 only)
+          $redistPath = Get-ChildItem -Path "$env:VCToolsRedistDir" -Recurse -Filter "vcruntime140.dll" | Where-Object { $_.DirectoryName -like "*x64*" } | Select-Object -First 1 -ExpandProperty DirectoryName
           if ($redistPath) {
             Copy-Item -Path "$redistPath\*.dll" -Destination artifact\ -ErrorAction SilentlyContinue
             Write-Host "Copied MSVC runtime DLLs from $redistPath"
