@@ -67,9 +67,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
           Copy-Item -Path build\bin\eden.exe -Destination artifact\ -ErrorAction SilentlyContinue
+          # Run windeployqt to collect all Qt6 runtime DLLs
+          windeployqt.exe --release --no-translations --no-system-d3d-compiler `
+            --no-opengl-sw --no-quick-import --no-appstore-compat `
+            artifact\eden.exe
           Copy-Item -Path dist\qt_themes -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
           Copy-Item -Path dist\languages -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
-          Copy-Item -Path dist\compatibility_list -Destination artifact\ -ErrorAction SilentlyContinue
+          Copy-Item -Path dist\compatibility_list -Destination artifact\ -Recurse -ErrorAction SilentlyContinue
           Compress-Archive -Path artifact\* -DestinationPath eden-windows-x64.zip
 
       - uses: actions/upload-artifact@v4
