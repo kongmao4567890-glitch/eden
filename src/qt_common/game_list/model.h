@@ -12,7 +12,6 @@
 #include "common/common_types.h"
 #include "frontend_common/play_time_manager.h"
 #include "qt_common/config/uisettings.h"
-#include "yuzu/compatibility_list.h"
 
 namespace Core {
 class System;
@@ -37,7 +36,6 @@ public:
         COLUMN_SIZE,
         COLUMN_PLAY_TIME,
         COLUMN_ADD_ONS,
-        COLUMN_COMPATIBILITY,
         COLUMN_COUNT,
     };
 
@@ -62,13 +60,9 @@ public:
     void RefreshExternalContent();
     void ResetExternalWatcher();
 
-    void LoadCompatibilityList();
-
     void RetranslateUI();
 
     QFileSystemWatcher* GetWatcher() const;
-
-    const CompatibilityList& GetCompatibilityList() const;
 
     void SetFlat(bool flat);
 
@@ -89,7 +83,6 @@ private:
 
     std::shared_ptr<FileSys::VfsFilesystem> vfs;
     FileSys::ManualContentProvider* provider;
-    CompatibilityList compatibility_list;
     const PlayTime::PlayTimeManager& play_time_manager;
     Core::System& system;
 

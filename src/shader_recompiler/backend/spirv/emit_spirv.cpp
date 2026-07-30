@@ -403,6 +403,9 @@ void SetupCapabilities(const Profile& profile, const Info& info, EmitContext& ct
     if (info.uses_sampled_1d) {
         ctx.AddCapability(spv::Capability::Sampled1D);
     }
+    if (info.uses_image_1d) {
+        ctx.AddCapability(spv::Capability::Image1D);
+    }
     if (info.uses_sparse_residency) {
         ctx.AddCapability(spv::Capability::SparseResidency);
     }
@@ -432,7 +435,7 @@ void SetupCapabilities(const Profile& profile, const Info& info, EmitContext& ct
     }
     if ((info.uses_subgroup_vote || info.uses_subgroup_invocation_id ||
          info.uses_subgroup_shuffles) &&
-        profile.support_vote) {
+        profile.support_vote && profile.SupportsSubgroupStage(ctx.stage)) {
         ctx.AddCapability(spv::Capability::GroupNonUniformBallot);
         ctx.AddCapability(spv::Capability::GroupNonUniformShuffle);
         if (!profile.warp_size_potentially_larger_than_guest) {
@@ -462,12 +465,22 @@ void SetupCapabilities(const Profile& profile, const Info& info, EmitContext& ct
     ctx.AddCapability(spv::Capability::ImageGatherExtended);
     ctx.AddCapability(spv::Capability::ImageQuery);
     ctx.AddCapability(spv::Capability::SampledBuffer);
-    // TODO: this usage needs to be tracked properly
-    if (ctx.profile.support_sampled_image_array_nonuniform_indexing) {
-        if (ctx.profile.supported_spirv < 0x00010400)
+    if (!ctx.non_uniform_ids.empty()) {
+        if (ctx.profile.supported_spirv < 0x00010500)
             ctx.AddExtension("SPV_EXT_descriptor_indexing");
         ctx.AddCapability(spv::Capability::ShaderNonUniform);
-        ctx.AddCapability(spv::Capability::SampledImageArrayNonUniformIndexing);
+        if (ctx.uses_nonuniform_sampled_image) {
+            ctx.AddCapability(spv::Capability::SampledImageArrayNonUniformIndexing);
+        }
+        if (ctx.uses_nonuniform_storage_image) {
+            ctx.AddCapability(spv::Capability::StorageImageArrayNonUniformIndexing);
+        }
+        if (ctx.uses_nonuniform_uniform_texel_buffer) {
+            ctx.AddCapability(spv::Capability::UniformTexelBufferArrayNonUniformIndexing);
+        }
+        if (ctx.uses_nonuniform_storage_texel_buffer) {
+            ctx.AddCapability(spv::Capability::StorageTexelBufferArrayNonUniformIndexing);
+        }
     }
 }
 

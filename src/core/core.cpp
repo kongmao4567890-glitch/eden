@@ -108,7 +108,7 @@ FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
 
 struct System::Impl {
     explicit Impl(System& system)
-        : kernel{system}, fs_controller{system}, hid_core{system.Kernel()}, cpu_manager{system},
+        : kernel{system}, fs_controller{system}, hid_core{kernel}, cpu_manager{system},
           reporter{system}, applet_manager{system}, frontend_applets{system}, profile_manager{} {}
 
     u64 program_id;
@@ -264,9 +264,7 @@ struct System::Impl {
 
         // Setting changes may require a full system reinitialization (e.g., disabling multicore).
         ReinitializeIfNecessary(system);
-
         kernel.Initialize();
-        cpu_manager.Initialize();
     }
 
     SystemResultStatus SetupForApplicationProcess(System& system, Frontend::EmuWindow& emu_window) {
@@ -302,9 +300,7 @@ struct System::Impl {
         return SystemResultStatus::Success;
     }
 
-    SystemResultStatus Load(System& system, Frontend::EmuWindow& emu_window,
-                            const std::string& filepath,
-                            Service::AM::FrontendAppletParameters& params) {
+    SystemResultStatus Load(System& system, Frontend::EmuWindow& emu_window, const std::string& filepath, Service::AM::FrontendAppletParameters& params) {
         InitializeKernel(system);
 
         const auto file = GetGameFileFromPath(virtual_filesystem, filepath);
@@ -351,6 +347,8 @@ struct System::Impl {
             ShutdownMainProcess();
             return init_result;
         }
+        // Waiting for GPU before initializing CPU
+        cpu_manager.Initialize();
 
         // Register with applet manager
         // All threads are started, begin main process execution, now that we're in the clear

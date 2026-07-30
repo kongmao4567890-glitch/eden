@@ -67,7 +67,7 @@
     <string name="show_shaders_building">显示着色器编译信息</string>
     <string name="show_shaders_building_description">显示当前正在编译的着色器数量</string>
     <string name="pipeline_worker_cores">管线工作线程</string>
-    <string name="pipeline_worker_cores_description">管理用于构建 Vulkan 管线的核心数量，数值越高则管线编译性能越好，但温度也会随之升高。</string>
+    <string name="pipeline_worker_cores_description">管理用于构建 Vulkan 管线的核心数量，较高的值可提升管线编译性能，但温度也会随之升高。</string>
     <string name="overlay_position">叠加层位置</string>
     <string name="overlay_position_description">选择叠加层在屏幕上显示的位置</string>
     <string name="overlay_position_top_left">左上</string>
@@ -185,7 +185,7 @@
     <string name="multiplayer_preferred_game_name">首选游戏</string>
     <string name="multiplayer_lobby_type">游戏大厅类型</string>
     <string name="multiplayer_room_name_error">长度需为3-20个字符</string>
-    <string name="multiplayer_required">必填</string>
+    <string name="multiplayer_required">需要</string>
     <string name="multiplayer_token_required">需要Web令牌，请前往高级设置 -> 系统 -> 网络</string>
     <string name="multiplayer_ip_error">IP格式无效</string>
     <string name="multiplayer_username_error">必须为4至20个字符，且仅包含字母、数字、点号、连字符、下划线和空格</string>
@@ -287,7 +287,7 @@
     <string name="warning_skip">跳过</string>
     <string name="warning_cancel">取消</string>
     <string name="install_amiibo_keys">安装 Amiibo 密钥文件</string>
-    <string name="install_amiibo_keys_description">在遊戏中使用 Amiibo 时必需</string>
+    <string name="install_amiibo_keys_description">在遊戏中使用 Amiibo 时需要</string>
     <string name="gpu_driver_fetcher">GPU驱动获取器</string>
     <string name="gpu_driver_manager">GPU 驱动管理器</string>
     <string name="install_gpu_driver_description">安装替代的驱动程序以获得更好的性能和精度</string>
@@ -463,11 +463,13 @@
     <string name="advanced">高级</string>
 
     <string name="renderer_accuracy">GPU 模式</string>
-    <string name="renderer_accuracy_description">控制 GPU 模拟模式。大多数游戏在“快速”或“平衡”模式下都能正常渲染，但有些游戏仍需使用“精确”模式。粒子效果通常只有在“精确”模式下才能正确渲染。</string>
+    <string name="renderer_accuracy_description">控制 GPU 模拟模式。大多数游戏在“快速”模式下渲染效果良好，但有些游戏仍需使用“精确”模式。而粒子效果通常只有在“精确”模式下才能正确渲染。</string>
     <string name="dma_accuracy">DMA 精度</string>
     <string name="dma_accuracy_description">控制 DMA 的精准度。安全精度可以修复存在于某些游戏中的问题，但在某些情况下也会对性能造成影响。如不确定，请保持“默认”。</string>
+    <string name="gpu_fence_behavior">GPU 围栏行为</string>
+    <string name="gpu_fence_behavior_description">控制 GPU 围栏同步行为。“即时”是速度最快的选项，但可能会引入一些问题。“均衡”提供了更好的兼容性，可能修复某些游戏中的问题。“精确”在牺牲部分性能的前提下进一步提升兼容性。“严格”是速度最慢的选项，但可以修复那些要求更严格同步的问题。默认遵循 GPU “精确”设定。</string>
     <string name="anisotropic_filtering">各向异性过滤</string>
-    <string name="anisotropic_filtering_description">提高斜角的纹理质量</string>
+    <string name="anisotropic_filtering_description">提升斜视角下的纹理质量</string>
     <string name="vram_usage_mode">显存使用模式</string>
     <string name="vram_usage_mode_description">控制显存分配与释放策略</string>
     <string name="accelerate_astc">ASTC解码方式</string>
@@ -487,6 +489,8 @@
     <string name="renderer_reactive_flushing_description">通过牺牲性能来提升某些游戏的渲染精度。</string>
     <string name="enable_buffer_history">启用缓冲区历史</string>
     <string name="enable_buffer_history_description">启用对先前缓冲区状态的访问。此选项可在某些游戏中提升渲染质量并保持性能的一致性。</string>
+    <string name="enable_gpu_buffer_readback">启用 GPU 缓冲区回读</string>
+    <string name="enable_gpu_buffer_readback_description">在上传前回读经由 GPU 修改过的缓冲区数据，以将其保留。一些游戏会用到这项设定以正确渲染某些效果。如果硬件无法处理额外的工作负载，则可能会导致问题。</string>
     <string name="use_optimized_vertex_buffers">优化顶点缓冲区</string>
     <string name="use_optimized_vertex_buffers_description">启用经过优化的顶点缓冲区绑定以提升性能。需要 Mesa 26.0 及以上版本的 Turnip 或 QCOM 驱动程序。若使用较旧版本的 Turnip 驱动 (25.3 及以下版本) 则会导致崩溃。</string>
 
@@ -496,8 +500,6 @@
     <string name="fast_gpu_time_description">强制大多数游戏以其最高原生分辨率运行。设置为 256 可获得最佳性能，设置为 512 可获得最佳画面保真度。</string>
     <string name="skip_cpu_inner_invalidation">跳过CPU内部无效化</string>
     <string name="skip_cpu_inner_invalidation_description">在更新内存时跳过某些 CPU 端的缓存失效操作，从而降低 CPU 占用率并提升性能。可能会在某些游戏中引发故障点或崩溃。</string>
-    <string name="antiflicker">防闪烁</string>
-    <string name="antiflicker_description">强制 GPU 围栏回调等待已提交的 GPU 任务。配合“快速 GPU 模式”一起使用，以牺牲少量性能为代价来避免画面闪烁现象。</string>
     <string name="fix_bloom_effects">修复 Bloom 效果</string>
     <string name="fix_bloom_effects_description">减少《智慧的再现》和《众神的三角力量2》（Adreno A6XX - A7XX/ Turnip）中的 bloom 模糊，并移除《Burnout》中的 bloom 效果。警告：可能会导致在其他游戏中出现图形异常。</string>
     <string name="emulate_bgr565">模拟 BGR565</string>
@@ -511,7 +513,7 @@
     <string name="gpu_unswizzle_enable">启用 GPU Unswizzle</string>
     <string name="gpu_unswizzle_disabled">禁用</string>
     <string name="gpu_unswizzle_texture_size">GPU Unswizzle 最大纹理尺寸</string>
-    <string name="gpu_unswizzle_texture_size_description">设置基于 GPU 的纹理 unswizzling 的最大尺寸（MB）。虽然 GPU 处理中等和大型纹理的速度更快，但对于非常小的纹理，CPU 可能更为高效。通过调节此项设置，以尝试在 GPU 加速与 CPU 开销之间找到平衡。</string>
+    <string name="gpu_unswizzle_texture_size_description">设置基于 GPU 的纹理 unswizzling 的最大尺寸（MB）。虽然 GPU 处理中等和大型纹理的速度更快，但对于非常小的纹理，CPU 可能更为高效。通过调节此项设置，以平衡GPU 加速与 CPU 开销。</string>
     <string name="gpu_unswizzle_stream_size">GPU Unswizzle 流大小</string>
     <string name="gpu_unswizzle_stream_size_description">设置用于 unswizzling 大型纹理时的每帧数据限制。较高的数值可以加速纹理的加载过程，但会带来更高的帧延迟。而较低的数值则可以降低 GPU 的开销，但也可能会导致可见的纹理闪现。</string>
     <string name="gpu_unswizzle_chunk_size">GPU Unswizzle 块大小</string>
@@ -563,8 +565,12 @@
     <string name="gpu_log_level_description">GPU 日志的详细级别(数值越高 = 细节越多,开销越大)</string>
     <string name="gpu_log_vulkan_calls">记录 Vulkan API 调用</string>
     <string name="gpu_log_vulkan_calls_description">在环形缓冲区中跟踪所有 Vulkan API 调用</string>
-    <string name="gpu_log_shader_dumps">转储着色器</string>
-    <string name="gpu_log_shader_dumps_description">保存已编译的着色器 SPIR-V 到文件中</string>
+    <string name="gpu_log_shader_dumps">转储 SPIR-V 着色器</string>
+    <string name="gpu_log_shader_dumps_description">将经过重编译的 SPIR-V 二进制文件（.spv）保存到 dump 文件夹中。使用 spirv-dis/spirv-cross/spirv-val 进行检查。</string>
+    <string name="dump_guest_shaders">转储 Guest (Maxwell) 着色器</string>
+    <string name="dump_guest_shaders_description">将 Maxwell guest 着色器字节码文件（*.ash）保存到 dump 文件夹。使用 nvdisasm 进行检查。</string>
+    <string name="dump_macros">转储 Maxwell 宏</string>
+    <string name="dump_macros_description">将 Maxwell 宏程序文件（*.macro）保存到 dump 文件夹。使用 envydis 进行检查。</string>
     <string name="gpu_log_memory_tracking">追踪 GPU 内存</string>
     <string name="gpu_log_memory_tracking_description">监控 GPU 内存的分配和释放</string>
     <string name="gpu_log_driver_debug">驱动调试信息</string>
@@ -984,13 +990,19 @@
 
     <!-- Renderer Accuracy -->
     <string name="renderer_accuracy_low">快速</string>
-    <string name="renderer_accuracy_medium">平衡</string>
     <string name="renderer_accuracy_high">精确</string>
 
     <!-- DMA Accuracy -->
     <string name="dma_accuracy_default">默认</string>
     <string name="dma_accuracy_unsafe">不安全</string>
     <string name="dma_accuracy_safe">安全</string>
+
+    <!-- GPU Fence Behavior -->
+    <string name="gpu_fence_behavior_default">默认</string>
+    <string name="gpu_fence_behavior_immediate">即时</string>
+    <string name="gpu_fence_behavior_balanced">均衡</string>
+    <string name="gpu_fence_behavior_accurate">精确</string>
+    <string name="gpu_fence_behavior_strict">严格</string>
 
     <string name="vram_usage_conservative">保守式</string>
     <string name="vram_usage_aggressive">主动式</string>
@@ -1015,7 +1027,7 @@
     <string name="ratio_stretch">拉伸窗口</string>
 
     <!-- CPU Accuracy -->
-    <string name="cpu_accuracy_accurate">精准</string>
+    <string name="cpu_accuracy_accurate">精确</string>
     <string name="cpu_accuracy_unsafe">不安全</string>
     <string name="cpu_accuracy_paranoid">极致</string>
     <string name="cpu_accuracy_debugging">调试</string>

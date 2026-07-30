@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // SPDX-FileCopyrightText: Copyright 2019 yuzu Emulator Project
@@ -12,6 +12,7 @@
 
 #include "shader_recompiler/shader_info.h"
 #include "video_core/renderer_vulkan/vk_compute_pass.h"
+#include "video_core/renderer_vulkan/vk_render_pass_cache.h"
 #include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
 #include "video_core/texture_cache/image_view_base.h"
 #include "video_core/vulkan_common/vulkan_memory_allocator.h"
@@ -87,7 +88,7 @@ public:
     }
 
     bool CanUploadMSAA() const noexcept {
-        return msaa_copy_pass.operator bool();
+        return true;
     }
 
     void AccelerateImageUpload(Image&, const StagingBufferRef&,
@@ -110,6 +111,24 @@ public:
 
     [[nodiscard]] VkBuffer GetTemporaryBuffer(size_t needed_size);
 
+    struct ResolveShadow {
+        vk::Image image;
+        vk::ImageView view;
+        VkFormat format = VK_FORMAT_UNDEFINED;
+        VkExtent2D extent{};
+        u32 layers = 0;
+        bool up_to_date = false;
+    };
+
+    [[nodiscard]] VkImageView GetOrCreateResolveShadow(VkImage msaa_image, VkFormat format,
+                                                       VkExtent2D extent, u32 layers);
+
+    [[nodiscard]] const ResolveShadow* GetValidResolveShadow(VkImage msaa_image) const;
+
+    void InvalidateResolveShadow(VkImage msaa_image);
+
+    void EraseResolveShadow(VkImage msaa_image);
+
     std::span<const VkFormat> ViewFormats(PixelFormat format) {
         return view_formats[static_cast<std::size_t>(format)];
     }
@@ -130,15 +149,13 @@ public:
     std::optional<ASTCDecoderPass> astc_decoder_pass;
 
     std::optional<BlockLinearUnswizzle3DPass> bl3d_unswizzle_pass;
-    vk::Buffer swizzle_table_buffer;
-    VkDeviceSize swizzle_table_size = 0;
-
-    std::optional<MSAACopyPass> msaa_copy_pass;
     const Settings::ResolutionScalingInfo& resolution;
     std::array<std::vector<VkFormat>, VideoCore::Surface::MaxPixelFormat> view_formats;
 
     static constexpr size_t indexing_slots = 8 * sizeof(size_t);
     std::array<vk::Buffer, indexing_slots> buffers{};
+    std::vector<std::pair<u64, vk::Image>> pending_msaa_images;
+    ankerl::unordered_dense::map<VkImage, ResolveShadow> resolve_shadows;
 };
 
 class Framebuffer {
@@ -168,6 +185,13 @@ public:
     [[nodiscard]] VkRenderPass RenderPass() const noexcept {
         return renderpass;
     }
+
+    [[nodiscard]] const RenderPassKey& RenderPassKeyBase() const noexcept {
+        return render_pass_key;
+    }
+
+    [[nodiscard]] VkRenderPass RenderPassVariant(u32 color_clear_mask, bool depth_stencil_clear,
+                                                 u32 color_discard_mask) const;
 
     [[nodiscard]] VkExtent2D RenderArea() const noexcept {
         return render_area;
@@ -209,6 +233,18 @@ public:
         return is_rescaled;
     }
 
+    [[nodiscard]] bool HasResolveColor() const noexcept {
+        return !resolve_images.empty();
+    }
+
+    [[nodiscard]] VkImage ResolveColorImage(size_t index) const noexcept {
+        return index < resolve_images.size() ? *resolve_images[index] : VK_NULL_HANDLE;
+    }
+
+    [[nodiscard]] bool DiscardsMsaaColor() const noexcept {
+        return discard_msaa_color;
+    }
+
 private:
     vk::Framebuffer framebuffer;
     VkRenderPass renderpass{};
@@ -222,6 +258,11 @@ private:
     bool has_depth{};
     bool has_stencil{};
     bool is_rescaled{};
+    std::vector<vk::Image> resolve_images;
+    std::vector<vk::ImageView> resolve_image_views;
+    RenderPassKey render_pass_key{};
+    RenderPassCache* render_pass_cache{nullptr};
+    bool discard_msaa_color{};
 };
 
 class Image : public VideoCommon::ImageBase {
@@ -359,6 +400,10 @@ public:
         return samples;
     }
 
+    [[nodiscard]] bool SupportsDepthComparison() const noexcept {
+        return supports_depth_comparison;
+    }
+
     [[nodiscard]] GPUVAddr GpuAddr() const noexcept {
         return gpu_addr;
     }
@@ -373,13 +418,15 @@ private:
         std::array<vk::ImageView, Shader::NUM_TEXTURE_TYPES> unsigneds;
     };
 
-    [[nodiscard]] vk::ImageView MakeView(VkFormat vk_format, VkImageAspectFlags aspect_mask);
+    [[nodiscard]] vk::ImageView MakeView(VkFormat vk_format, VkImageAspectFlags aspect_mask,
+                                         std::optional<Shader::TextureType> texture_type = std::nullopt);
 
     const Device* device = nullptr;
     const SlotVector<Image>* slot_images = nullptr;
 
     std::array<vk::ImageView, Shader::NUM_TEXTURE_TYPES> image_views;
     std::optional<StorageViews> storage_views;
+    vk::ImageView typeless_storage_view;
     vk::ImageView depth_view;
     vk::ImageView stencil_view;
     vk::ImageView color_view;
@@ -388,6 +435,9 @@ private:
     VkImageView render_target = VK_NULL_HANDLE;
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
     u32 buffer_size = 0;
+
+    bool uses_widened_astc_format = false;
+    bool supports_depth_comparison = false;
 };
 
 class ImageAlloc : public VideoCommon::ImageAllocBase {};
@@ -408,9 +458,27 @@ public:
         return static_cast<bool>(sampler_default_anisotropy);
     }
 
+    [[nodiscard]] VkSampler HandleWithNearestFilter() const noexcept {
+        return *sampler_nearest;
+    }
+
+    [[nodiscard]] bool HasLinearFiltering() const noexcept {
+        return static_cast<bool>(sampler_nearest);
+    }
+
+    [[nodiscard]] VkSampler HandleWithoutDepthComparison() const noexcept {
+        return *sampler_noncompare;
+    }
+
+    [[nodiscard]] bool HasDepthComparison() const noexcept {
+        return static_cast<bool>(sampler_noncompare);
+    }
+
 private:
     vk::Sampler sampler;
     vk::Sampler sampler_default_anisotropy;
+    vk::Sampler sampler_nearest;
+    vk::Sampler sampler_noncompare;
 };
 
 struct TextureCacheParams {

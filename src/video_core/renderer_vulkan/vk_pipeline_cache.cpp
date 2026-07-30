@@ -62,7 +62,7 @@ using VideoCommon::FileEnvironment;
 using VideoCommon::GenericEnvironment;
 using VideoCommon::GraphicsEnvironment;
 
-constexpr u32 CACHE_VERSION = 17;
+constexpr u32 CACHE_VERSION = 18;
 constexpr std::array<char, 8> VULKAN_CACHE_MAGIC_NUMBER{'y', 'u', 'z', 'u', 'v', 'k', 'c', 'h'};
 
 template <typename Container>
@@ -246,32 +246,7 @@ Shader::RuntimeInfo MakeRuntimeInfo(std::span<const Shader::IR::Program> program
             key.state.UnpackComparisonOp(key.state.alpha_test_func.Value()));
         info.alpha_test_reference = std::bit_cast<float>(key.state.alpha_test_ref);
 
-        // Check for dual source blending
-        const auto& blend0 = key.state.attachments[0];
-        if (blend0.enable != 0) {
-            using F = Maxwell::Blend::Factor;
-            const auto src_rgb = blend0.SourceRGBFactor();
-            const auto dst_rgb = blend0.DestRGBFactor();
-            const auto src_a = blend0.SourceAlphaFactor();
-            const auto dst_a = blend0.DestAlphaFactor();
-            info.dual_source_blend =
-                src_rgb == F::Source1Color_D3D || src_rgb == F::OneMinusSource1Color_D3D ||
-                src_rgb == F::Source1Alpha_D3D || src_rgb == F::OneMinusSource1Alpha_D3D ||
-                src_rgb == F::Source1Color_GL || src_rgb == F::OneMinusSource1Color_GL ||
-                src_rgb == F::Source1Alpha_GL || src_rgb == F::OneMinusSource1Alpha_GL ||
-                dst_rgb == F::Source1Color_D3D || dst_rgb == F::OneMinusSource1Color_D3D ||
-                dst_rgb == F::Source1Alpha_D3D || dst_rgb == F::OneMinusSource1Alpha_D3D ||
-                dst_rgb == F::Source1Color_GL || dst_rgb == F::OneMinusSource1Color_GL ||
-                dst_rgb == F::Source1Alpha_GL || dst_rgb == F::OneMinusSource1Alpha_GL ||
-                src_a == F::Source1Color_D3D || src_a == F::OneMinusSource1Color_D3D ||
-                src_a == F::Source1Alpha_D3D || src_a == F::OneMinusSource1Alpha_D3D ||
-                src_a == F::Source1Color_GL || src_a == F::OneMinusSource1Color_GL ||
-                src_a == F::Source1Alpha_GL || src_a == F::OneMinusSource1Alpha_GL ||
-                dst_a == F::Source1Color_D3D || dst_a == F::OneMinusSource1Color_D3D ||
-                dst_a == F::Source1Alpha_D3D || dst_a == F::OneMinusSource1Alpha_D3D ||
-                dst_a == F::Source1Color_GL || dst_a == F::OneMinusSource1Color_GL ||
-                dst_a == F::Source1Alpha_GL || dst_a == F::OneMinusSource1Alpha_GL;
-        }
+        info.dual_source_blend = key.state.attachment0_dual_source_blend != 0;
 
         if (device.IsMoltenVK()) {
             for (size_t i = 0; i < 8; ++i) {
@@ -378,12 +353,32 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
       serialization_thread(1, "VkPipelineSerialization") {
     const auto& float_control{device.FloatControlProperties()};
     const VkDriverId driver_id{device.GetDriverID()};
+    const VkShaderStageFlags subgroup_stages{device.GetSubgroupSupportedStages()};
+    const auto subgroup_stage_bit{[subgroup_stages](VkShaderStageFlags flag, Shader::Stage stage) {
+        return (subgroup_stages & flag) != 0 ? (1u << static_cast<u32>(stage)) : 0u;
+    }};
+    const u32 supported_subgroup_stages{
+        subgroup_stage_bit(VK_SHADER_STAGE_VERTEX_BIT, Shader::Stage::VertexA) |
+        subgroup_stage_bit(VK_SHADER_STAGE_VERTEX_BIT, Shader::Stage::VertexB) |
+        subgroup_stage_bit(VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                           Shader::Stage::TessellationControl) |
+        subgroup_stage_bit(VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                           Shader::Stage::TessellationEval) |
+        subgroup_stage_bit(VK_SHADER_STAGE_GEOMETRY_BIT, Shader::Stage::Geometry) |
+        subgroup_stage_bit(VK_SHADER_STAGE_FRAGMENT_BIT, Shader::Stage::Fragment) |
+        subgroup_stage_bit(VK_SHADER_STAGE_COMPUTE_BIT, Shader::Stage::Compute)};
     profile = Shader::Profile{
         .supported_spirv = device.SupportedSpirvVersion(),
         .unified_descriptor_binding = true,
         .support_descriptor_aliasing = device.IsDescriptorAliasingSupported(),
         .support_int8 = device.IsInt8Supported(),
+        .support_uniform_and_storage_buffer_8bit =
+            device.IsUniformAndStorageBuffer8BitAccessSupported(),
+        .support_storage_buffer_8bit = device.IsStorageBuffer8BitAccessSupported(),
         .support_int16 = device.IsShaderInt16Supported(),
+        .support_uniform_and_storage_buffer_16bit =
+            device.IsUniformAndStorageBuffer16BitAccessSupported(),
+        .support_storage_buffer_16bit = device.IsStorageBuffer16BitAccessSupported(),
         .support_int64 = device.IsShaderInt64Supported(),
         .support_vertex_instance_id = false,
         .support_float_controls = device.IsKhrShaderFloatControlsSupported(),
@@ -402,7 +397,12 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .support_fp64_signed_zero_nan_preserve =
             float_control.shaderSignedZeroInfNanPreserveFloat64 != VK_FALSE,
         .support_explicit_workgroup_layout = device.IsKhrWorkgroupMemoryExplicitLayoutSupported(),
+        .support_workgroup_layout_8bit_access =
+            device.IsWorkgroupMemoryExplicitLayout8BitAccessSupported(),
+        .support_workgroup_layout_16bit_access =
+            device.IsWorkgroupMemoryExplicitLayout16BitAccessSupported(),
         .support_vote = device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_VOTE_BIT),
+        .supported_subgroup_stages = supported_subgroup_stages,
         .support_viewport_index_layer_non_geometry =
             device.IsExtShaderViewportIndexLayerSupported(),
         .support_viewport_mask = device.IsNvViewportArray2Supported(),
@@ -410,6 +410,7 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .support_demote_to_helper_invocation =
             device.IsExtShaderDemoteToHelperInvocationSupported(),
         .support_int64_atomics = device.IsExtShaderAtomicInt64Supported(),
+        .support_shared_int64_atomics = device.IsSharedInt64AtomicsSupported(),
         .support_derivative_control = true,
         .support_geometry_shader_passthrough = device.IsNvGeometryShaderPassthroughSupported(),
         .support_native_ndc = device.IsExtDepthClipControlSupported(),
@@ -418,6 +419,12 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .support_geometry_streams = device.AreTransformFeedbackGeometryStreamsSupported(),
         .support_sampled_image_array_nonuniform_indexing =
             device.IsSampledImageArrayNonUniformIndexingSupported(),
+        .support_storage_image_array_nonuniform_indexing =
+            device.IsStorageImageArrayNonUniformIndexingSupported(),
+        .support_uniform_texel_buffer_array_nonuniform_indexing =
+            device.IsUniformTexelBufferArrayNonUniformIndexingSupported(),
+        .support_storage_texel_buffer_array_nonuniform_indexing =
+            device.IsStorageTexelBufferArrayNonUniformIndexingSupported(),
 
         .warp_size_potentially_larger_than_guest = device.IsWarpSizePotentiallyBiggerThanGuest(),
 
@@ -479,6 +486,8 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     LOG_INFO(Render_Vulkan, "DynamicState setting value: {}", u32(Settings::values.dyna_state.GetValue()));
 
     dynamic_features = {};
+    dynamic_features.driver_id = device.GetDriverID();
+    dynamic_features.driver_version = device.GetDriverVersion();
 
     // User granularity enforced in vulkan_device.cpp switch statement:
     //   Level 0: Core Dynamic States only
@@ -500,6 +509,8 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         device.IsExtExtendedDynamicState3BlendingSupported();
     dynamic_features.has_extended_dynamic_state_3_enables =
         device.IsExtExtendedDynamicState3EnablesSupported();
+    dynamic_features.has_color_write_enable =
+        device.IsExtColorWriteEnableSupported();
     dynamic_features.has_dynamic_state3_depth_clamp_enable =
         dynamic_features.has_extended_dynamic_state_3_enables &&
         device.SupportsDynamicState3DepthClampEnable();
@@ -632,7 +643,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 dynamic_features.has_extended_dynamic_state_3_blend ||
             (key.state.extended_dynamic_state_3_enables != 0) !=
                 dynamic_features.has_extended_dynamic_state_3_enables ||
-            (key.state.dynamic_vertex_input != 0) != dynamic_features.has_dynamic_vertex_input) {
+            (key.state.color_write_enable_dynamic != 0) !=
+                dynamic_features.has_color_write_enable ||
+            (key.state.dynamic_vertex_input != 0) !=
+                dynamic_features.has_dynamic_vertex_input) {
             return;
         }
 
@@ -727,7 +741,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     std::span<Shader::Environment* const> envs, PipelineStatistics* statistics,
     bool build_in_parallel) try {
     auto hash = key.Hash();
-    LOG_INFO(Render_Vulkan, "0x{:016x}", hash);
+    LOG_INFO(Render_Vulkan, "{:#016x}", hash);
     size_t env_index{0};
     std::array<Shader::IR::Program, Maxwell::MaxShaderProgram> programs;
     const bool uses_vertex_a{key.unique_hashes[0] != 0};
@@ -890,11 +904,11 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     PipelineStatistics* statistics, bool build_in_parallel) try {
     auto hash = key.Hash();
     if (device.HasBrokenCompute()) {
-        LOG_ERROR(Render_Vulkan, "Skipping 0x{:016x}", hash);
+        LOG_ERROR(Render_Vulkan, "Skipping {:#016x}", hash);
         return nullptr;
     }
 
-    LOG_INFO(Render_Vulkan, "0x{:016x}", hash);
+    LOG_INFO(Render_Vulkan, "{:#016x}", hash);
 
     Shader::Maxwell::Flow::CFG cfg{env, pools.flow_block, env.StartAddress()};
 
@@ -911,7 +925,7 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     const u32 max_shared_memory = device.GetMaxComputeSharedMemorySize();
     if (needs_shared_mem_clamp && program.shared_memory_size > max_shared_memory) {
         LOG_WARNING(Render_Vulkan,
-                    "Compute shader 0x{:016x} requests {}KB shared memory but device max is {}KB - clamping",
+                    "Compute shader {:#016x} requests {}KB shared memory but device max is {}KB - clamping",
                     key.unique_hash,
                     program.shared_memory_size / 1024,
                     max_shared_memory / 1024);
@@ -944,7 +958,8 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     Common::ThreadWorker* const thread_worker{build_in_parallel ? &workers : nullptr};
     return std::make_unique<ComputePipeline>(device, scheduler, vulkan_pipeline_cache, descriptor_pool,
                                              guest_descriptor_queue, thread_worker, statistics,
-                                             &shader_notify, program.info, std::move(spv_module));
+                                             &shader_notify, program.info, std::move(spv_module),
+                                             key.unique_hash);
 
 } catch (const Shader::Exception& exception) {
     LOG_ERROR(Render_Vulkan, "{}", exception.what());

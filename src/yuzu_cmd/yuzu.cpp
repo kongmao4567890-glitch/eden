@@ -11,7 +11,6 @@
 
 #include <fmt/ostream.h>
 
-#include "common/detached_tasks.h"
 #include "common/logging.h"
 #include "common/scm_rev.h"
 #include "common/settings.h"
@@ -187,13 +186,11 @@ int main(int argc, char** argv) {
     Common::Log::Initialize();
     Common::Log::SetColorConsoleBackendEnabled(true);
     Common::Log::Start();
-    Common::DetachedTasks detached_tasks;
 
     int option_index = 0;
 #ifdef _WIN32
     int argc_w;
     auto argv_w = CommandLineToArgvW(GetCommandLineW(), &argc_w);
-
     if (argv_w == nullptr) {
         LOG_CRITICAL(Frontend, "Failed to get command line arguments");
         return -1;
@@ -206,10 +203,13 @@ int main(int argc, char** argv) {
     std::optional<u16> override_gdb_port{};
     bool use_multiplayer = false;
     bool fullscreen = false;
+    bool force_null_render = false;
+    bool force_single_core = false;
     std::string nickname{};
     std::string password{};
     std::string address{};
     std::string input_profile{};
+    std::optional<std::string> log_filter{};
     u16 port = Network::DefaultRoomPort;
 
     static struct option long_options[] = {
@@ -224,6 +224,9 @@ int main(int argc, char** argv) {
         {"user", required_argument, 0, 'u'},
         {"version", no_argument, 0, 'v'},
         {"input-profile", no_argument, 0, 'i'},
+        {"null-render", no_argument, 0, 'n'},
+        {"singlecore", no_argument, 0, 's'},
+        {"filter", no_argument, 0, 'x'},
         {0, 0, 0, 0},
         // clang-format on
     };
@@ -261,7 +264,7 @@ int main(int argc, char** argv) {
                 if (!std::regex_match(str_arg, re)) {
                     std::cout << "Wrong format for option --multiplayer\n";
                     PrintHelp(argv[0]);
-                    return 0;
+                    return -1;
                 }
 
                 std::smatch match;
@@ -271,17 +274,16 @@ int main(int argc, char** argv) {
                 password = match[2];
                 address = match[3];
                 if (!match[4].str().empty()) {
-                    port = static_cast<u16>(std::strtoul(match[4].str().c_str(), nullptr, 0));
+                    port = u16(std::strtoul(match[4].str().c_str(), nullptr, 0));
                 }
                 std::regex nickname_re("^[a-zA-Z0-9._\\- ]+$");
                 if (!std::regex_match(nickname, nickname_re)) {
-                    std::cout
-                        << "Nickname is not valid. Must be 4 to 20 alphanumeric characters.\n";
-                    return 0;
+                    LOG_ERROR(Frontend, "Nickname is not valid. Must be 4 to 20 alphanumeric characters");
+                    return -1;
                 }
                 if (address.empty()) {
-                    std::cout << "Address to room must not be empty.\n";
-                    return 0;
+                    LOG_ERROR(Frontend, "Address to room must not be empty");
+                    return -1;
                 }
                 break;
             }
@@ -294,7 +296,17 @@ int main(int argc, char** argv) {
                 break;
             case 'v':
                 PrintVersion();
-                return 0;
+                return -1;
+            case 'n':
+                force_null_render = true;
+                break;
+            case 's':
+                force_single_core = true;
+                break;
+            case 'x':
+                log_filter = argv[optind];
+                ++optind;
+                break;
             }
         } else {
 #ifdef _WIN32
@@ -311,7 +323,7 @@ int main(int argc, char** argv) {
     // apply the log_filter setting
     // the logger was initialized before and doesn't pick up the filter on its own
     Common::Log::Filter filter;
-    filter.ParseFilterString(Settings::values.log_filter.GetValue());
+    filter.ParseFilterString(log_filter.value_or(Settings::values.log_filter.GetValue()));
     Common::Log::SetGlobalFilter(filter);
 
     if (!program_args.empty()) {
@@ -330,6 +342,14 @@ int main(int argc, char** argv) {
     if (override_gdb_port.has_value()) {
         Settings::values.use_gdbstub = true;
         Settings::values.gdbstub_port = *override_gdb_port;
+    }
+
+    if (force_single_core) {
+        Settings::values.use_multi_core = false;
+    }
+
+    if (force_null_render) {
+        Settings::values.renderer_backend = Settings::RendererBackend::Null;
     }
 
 #ifdef _WIN32
@@ -452,7 +472,6 @@ int main(int argc, char** argv) {
     system.DetachDebugger();
     void(system.Pause());
     system.ShutdownMainProcess();
-    detached_tasks.WaitForAllTasks();
     return 0;
 }
 

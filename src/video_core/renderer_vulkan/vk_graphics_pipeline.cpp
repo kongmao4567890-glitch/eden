@@ -124,8 +124,8 @@ PixelFormat DecodeFormat(u8 encoded_format) {
     return PixelFormatFromRenderTargetFormat(format);
 }
 
-RenderPassKey MakeRenderPassKey(const FixedPipelineState& state) {
-    RenderPassKey key;
+RenderPassKey MakeRenderPassKey(const FixedPipelineState& state, const Device& device) {
+    RenderPassKey key{};
     std::ranges::transform(state.color_formats, key.color_formats.begin(), DecodeFormat);
     if (state.depth_enabled != 0) {
         const auto depth_format{static_cast<Tegra::DepthFormat>(state.depth_format.Value())};
@@ -134,6 +134,11 @@ RenderPassKey MakeRenderPassKey(const FixedPipelineState& state) {
         key.depth_format = PixelFormat::Invalid;
     }
     key.samples = MaxwellToVK::MsaaMode(state.msaa_mode);
+    const bool has_color = std::ranges::any_of(key.color_formats, [](PixelFormat format) {
+        return format != PixelFormat::Invalid;
+    });
+    key.resolve_color =
+        key.samples != VK_SAMPLE_COUNT_1_BIT && has_color && device.IsTiler();
     return key;
 }
 
@@ -285,9 +290,20 @@ GraphicsPipeline::GraphicsPipeline(
         descriptor_update_template =
             builder.CreateTemplate(set_layout, *pipeline_layout, uses_push_descriptor);
 
-        const VkRenderPass render_pass{render_pass_cache.Get(MakeRenderPassKey(key.state))};
+        const VkRenderPass render_pass{render_pass_cache.Get(MakeRenderPassKey(key.state, device))};
         Validate();
-        MakePipeline(render_pass);
+        try {
+            MakePipeline(render_pass);
+        } catch (const vk::Exception& exception) {
+            LOG_CRITICAL(Render_Vulkan, "Graphics pipeline build failed: {}", exception.what());
+            std::scoped_lock lock{build_mutex};
+            is_built = true;
+            build_condvar.notify_one();
+            if (shader_notify) {
+                shader_notify->MarkShaderComplete();
+            }
+            return;
+        }
         if (pipeline_statistics) {
             pipeline_statistics->Collect(device, *pipeline);
         }
@@ -426,8 +442,14 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
                     is_written = desc.is_written;
                 }
                 ImageView& image_view{texture_cache.GetImageView(texture_buffer_it->id)};
+                PixelFormat format{image_view.format};
+                if constexpr (is_image) {
+                    if (const auto explicit_format{PixelFormatFromImageFormat(desc.format)}) {
+                        format = *explicit_format;
+                    }
+                }
                 buffer_cache.BindGraphicsTextureBuffer(stage, index, image_view.GpuAddr(),
-                                                       image_view.BufferSize(), image_view.format,
+                                                       image_view.BufferSize(), format,
                                                        is_written, is_image);
                 ++index;
                 ++texture_buffer_it;
@@ -513,6 +535,9 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
     texture_cache.UpdateRenderTargets(false);
     texture_cache.CheckFeedbackLoop(std::span<const VideoCommon::ImageViewInOut>{views.data(),
                                                                                  views.size()});
+    if (IsBuilt() && !pipeline) {
+        return false;
+    }
     ConfigureDraw(rescaling, render_area);
 
     return true;
@@ -535,7 +560,7 @@ void GraphicsPipeline::ConfigureDraw(const RescalingPushConstant& rescaling,
     // Log graphics pipeline binding
     if (bind_pipeline && GPU::Logging::IsActive() &&
         Settings::values.gpu_log_vulkan_calls.GetValue()) {
-        const std::string pipeline_info = fmt::format("hash=0x{:016x}", key.Hash());
+        const std::string pipeline_info = fmt::format("hash={:#016x}", key.Hash());
         GPU::Logging::GPULogger::GetInstance().LogPipelineBind(false, pipeline_info);
     }
 
@@ -545,6 +570,9 @@ void GraphicsPipeline::ConfigureDraw(const RescalingPushConstant& rescaling,
                       uses_render_area = render_area.uses_render_area,
                       render_area_data = render_area.words](vk::CommandBuffer cmdbuf) {
         if (bind_pipeline) {
+            if (!pipeline) {
+                return;
+            }
             cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
         }
         cmdbuf.PushConstants(*pipeline_layout, VK_SHADER_STAGE_ALL_GRAPHICS,
@@ -865,18 +893,17 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
             VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT,
             VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT,
             VK_DYNAMIC_STATE_STENCIL_OP_EXT,
+            VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY_EXT,
         };
         dynamic_states.insert(dynamic_states.end(), extended.begin(), extended.end());
 
-        // VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE_EXT is part of EDS1
-        // Only use it if VIDS is not active (VIDS replaces it with full vertex input control)
+        // VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE_EXT
         if (!key.state.dynamic_vertex_input) {
             dynamic_states.push_back(VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE_EXT);
         }
     }
 
-    // VK_DYNAMIC_STATE_VERTEX_INPUT_EXT (VIDS) - Independent from EDS
-    // Provides full dynamic vertex input control, replaces VERTEX_INPUT_BINDING_STRIDE
+    // VK_DYNAMIC_STATE_VERTEX_INPUT_EXT
     if (key.state.dynamic_vertex_input) {
         dynamic_states.push_back(VK_DYNAMIC_STATE_VERTEX_INPUT_EXT);
     }
@@ -904,6 +931,11 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
             VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT,
         };
         dynamic_states.insert(dynamic_states.end(), extended3.begin(), extended3.end());
+    }
+
+    // VK_EXT_color_write_enable fallback for fully on/off render targets when EDS3 blending is not available.
+    if (!key.state.extended_dynamic_state_3_blend && key.state.color_write_enable_dynamic) {
+        dynamic_states.push_back(VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT);
     }
 
     // EDS3 - Enables (composite: per-feature)

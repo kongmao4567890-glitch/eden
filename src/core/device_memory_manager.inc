@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <vector>
 
+#include <boost/container/deque.hpp>
+
 #include "common/address_space.h"
 #include "common/address_space.inc"
 #include "common/alignment.h"
@@ -33,21 +35,23 @@ public:
 
     void GatherValues(u32 start_entry, Common::ScratchBuffer<u32>& buffer) {
         buffer.resize(8);
-        buffer.resize(0);
-        size_t index = 0;
-        const auto add_value = [&](u32 value) {
-            buffer.resize(index + 1);
+        const auto add_value = [&buffer](u32 value, size_t index) {
+            if (buffer.size() < index + 1)
+                buffer.resize(index + 8);
             buffer[index++] = value;
+            return index;
         };
 
+        size_t index = 0;
         u32 iter_entry = start_entry;
         Entry* current = &storage[iter_entry - 1];
-        add_value(current->value);
+        index = add_value(current->value, index);
         while (current->next_entry != 0) {
             iter_entry = current->next_entry;
             current = &storage[iter_entry - 1];
-            add_value(current->value);
+            index = add_value(current->value, index);
         }
+        buffer.resize(index);
     }
 
     u32 Register(u32 value) {
@@ -124,8 +128,8 @@ private:
         u32 value{};
     };
 
-    std::deque<Entry> storage;
-    std::deque<u32> free_entries;
+    std::vector<Entry> storage;
+    boost::container::deque<u32> free_entries;
 };
 
 struct EmptyAllocator {
@@ -427,7 +431,7 @@ void DeviceMemoryManager<Traits>::ReadBlock(DAddr address, void* dest_pointer, s
         [&](size_t copy_amount, DAddr current_vaddr) {
             LOG_ERROR(
                 HW_Memory,
-                "Unmapped Device ReadBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})",
+                "Unmapped Device ReadBlock @ {:#016x} (start address = {:#016x}, size = {})",
                 current_vaddr, address, size);
             std::memset(dest_pointer, 0, copy_amount);
         },
@@ -446,7 +450,7 @@ void DeviceMemoryManager<Traits>::WriteBlock(DAddr address, const void* src_poin
         [&](size_t copy_amount, DAddr current_vaddr) {
             LOG_ERROR(
                 HW_Memory,
-                "Unmapped Device WriteBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})",
+                "Unmapped Device WriteBlock @ {:#016x} (start address = {:#016x}, size = {})",
                 current_vaddr, address, size);
         },
         [&](size_t copy_amount, u8* const dst_ptr) {
@@ -485,7 +489,7 @@ void DeviceMemoryManager<Traits>::ReadBlockUnsafe(DAddr address, void* dest_poin
         [&](size_t copy_amount, DAddr current_vaddr) {
             LOG_ERROR(
                 HW_Memory,
-                "Unmapped Device ReadBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})",
+                "Unmapped Device ReadBlock @ {:#016x} (start address = {:#016x}, size = {})",
                 current_vaddr, address, size);
             std::memset(dest_pointer, 0, copy_amount);
         },
@@ -505,7 +509,7 @@ void DeviceMemoryManager<Traits>::WriteBlockUnsafe(DAddr address, const void* sr
         [&](size_t copy_amount, DAddr current_vaddr) {
             LOG_ERROR(
                 HW_Memory,
-                "Unmapped Device WriteBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})",
+                "Unmapped Device WriteBlock @ {:#016x} (start address = {:#016x}, size = {})",
                 current_vaddr, address, size);
         },
         [&](size_t copy_amount, u8* const dst_ptr) {
@@ -619,7 +623,7 @@ template <typename Traits>
 void DeviceMemoryManager<Traits>::UpdatePagesCachedCount(DAddr addr, size_t size, s32 delta) {
     Common::ScopedRangeLock lk(counter_guard, addr, size);
     UpdatePagesCachedCountNoLock(addr, size, delta);
-} 
+}
 
 template <typename Traits>
 void DeviceMemoryManager<Traits>::UpdatePagesCachedBatch(std::span<const std::pair<DAddr, size_t>> ranges, s32 delta) {
