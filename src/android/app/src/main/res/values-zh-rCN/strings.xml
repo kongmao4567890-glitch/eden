@@ -1218,12 +1218,6 @@
     <string name="cpu_backend_nce">NCE</string>
     <string name="cubeb">cubeb</string>
     <string name="discord_link">https://discord.gg/HstXbPch7X</string>
-    <string name="dump_guest_shaders">转储客机 (Maxwell) 着色器</string>
-    <string name="dump_guest_shaders_description">将 Maxwell 客机着色器字节码文件 (*.ash) 保存到转储文件夹。可使用 nvdisasm 检查。</string>
-    <string name="dump_macros">转储 Maxwell 宏</string>
-    <string name="dump_macros_description">将 Maxwell 宏程序文件 (*.macro) 保存到转储文件夹。可使用 envydis 检查。</string>
-    <string name="enable_gpu_buffer_readback">启用 GPU 缓冲区回读</string>
-    <string name="enable_gpu_buffer_readback_description">在上传前回读 GPU 修改的缓冲区数据以保留。某些游戏需要此功能才能正确渲染特定效果。如果硬件无法承受额外的工作负载，可能会导致问题……</string>
     <string name="github_link">https://git.eden-emu.dev/eden-emu</string>
     <string name="language_brazilian_portuguese">Português do Brasil</string>
     <string name="language_british_english">British English</string>
